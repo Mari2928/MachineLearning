@@ -31,12 +31,13 @@ def compute_probabilities(X, theta, temp_parameter):
     Returns:
         H - (k, n) NumPy array, where each entry H[j][i] is the probability that X[i] is labeled as j
     """
-    aux = np.matmul(theta,(X.T))/temp_parameter
-    c = np.max(aux, axis=0)
-    h = np.exp(aux-c)
-    h_sum = np.sum(h, axis=0)
-    H = h/h_sum
-    return H
+    itemp = 1 / temp_parameter
+    dot_products = itemp * theta.dot(X.T)
+    max_of_columns = dot_products.max(axis=0)
+    shifted_dot_products = dot_products - max_of_columns
+    exponentiated = np.exp(shifted_dot_products)
+    col_sums = exponentiated.sum(axis=0)
+    return exponentiated / col_sums
 
 def compute_cost_function(X, Y, theta, lambda_factor, temp_parameter):
     """
@@ -54,19 +55,14 @@ def compute_cost_function(X, Y, theta, lambda_factor, temp_parameter):
     Returns
         c - the cost value (scalar)
     """
-    k = theta.shape[0]
-    n = X.shape[0]
-    P = compute_probabilities(X, theta, temp_parameter)
-    sum = 0
-    for i in range(n):
-        for j in range(k):
-            if(Y[i] == j):
-                sum += np.log(P[j][i])    
-                
-    loss = -1/n * sum    
-    reg = np.sum(lambda_factor/2 * np.square(theta))
-    C =  loss + reg
-    return C
+    N = X.shape[0]
+    probabilities = compute_probabilities(X, theta, temp_parameter)
+    selected_probabilities = np.choose(Y, probabilities)
+    non_regulizing_cost = np.sum(np.log(selected_probabilities))
+    non_regulizing_cost *= -1 / N
+    regulizing_cost = np.sum(np.square(theta))
+    regulizing_cost *= lambda_factor / 2.0
+    return non_regulizing_cost + regulizing_cost
 
 def run_gradient_descent_iteration(X, Y, theta, alpha, lambda_factor, temp_parameter):
     """
@@ -85,14 +81,15 @@ def run_gradient_descent_iteration(X, Y, theta, alpha, lambda_factor, temp_param
     Returns:
         theta - (k, d) NumPy array that is the final value of parameters theta
     """
-    n = X.shape[0]
-    k = theta.shape[0]
-    P = compute_probabilities(X, theta, temp_parameter)
-    M = sparse.coo_matrix(([1]*n, (Y, range(n))), shape=(k,n)).toarray()
-    sum = np.dot(M-P, X)
-    reg = lambda_factor * theta
-    GD = -sum/(temp_parameter*n) + reg
-    return theta - alpha * GD
+    itemp = 1. / temp_parameter
+    num_examples = X.shape[0]
+    num_labels = theta.shape[0]
+    probabilities = compute_probabilities(X, theta, temp_parameter)
+    # M[i][j] = 1 if y^(j) = i and 0 otherwise.
+    M = sparse.coo_matrix(([1]*num_examples, (Y, range(num_examples))), shape=(num_labels, num_examples)).toarray()
+    non_regularized_gradient = np.dot(M - probabilities, X)
+    non_regularized_gradient *= -itemp / num_examples
+    return theta - alpha * (non_regularized_gradient + lambda_factor * theta)
 
 def update_y(train_y, test_y):
     """
@@ -128,7 +125,6 @@ def compute_test_error_mod3(X, Y, theta, temp_parameter):
     Returns:
         test_error - the error rate of the classifier (scalar)
     """
-    error_count = 0.
     assigned_labels = get_classification(X, theta, temp_parameter)
     assigned_labels = np.mod(assigned_labels, 3)
     return 1 - np.mean(assigned_labels == Y)

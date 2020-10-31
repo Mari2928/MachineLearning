@@ -19,7 +19,7 @@ def polynomial_kernel(X, Y, c, p):
         Returns:
             kernel_matrix - (n, m) Numpy array containing the kernel matrix
     """
-    return (c + np.matmul(X, Y.T)) ** p
+    return (c + X @ Y.T) ** p
 
 
 def rbf_kernel(X, Y, gamma):
